@@ -69,7 +69,8 @@ function getMusePath(): string {
 async function handleSend(prompt: string, webview: vscode.Webview, workspace?: string) {
   if (!prompt.trim()) return;
   const musePath = getMusePath();
-  const args = ['exec', '--json'];
+  // Correct order: `muse exec [OPTIONS] [PROMPT]` — exec first, then its flags
+  const args = ['exec', '--json', '--trust-workspace'];
   if (workspace) args.push('--workspace', workspace);
   // stream JSONL events; fallback to plain if --json not desired
   // For MVP we also run a plain exec to get final text if JSONL parsing fails
@@ -123,8 +124,10 @@ async function handleSend(prompt: string, webview: vscode.Webview, workspace?: s
   });
 
   proc.stderr?.on('data', (d: Buffer) => {
-    // surface stderr as system note (not as assistant)
-    webview.postMessage({ type: 'chunk', text: d.toString(), done: false, isStderr: true });
+    const s = d.toString();
+    // Filter noisy sandbox warnings — surface only real errors
+    if (s.includes('Linux sandbox') || s.includes('Bubblewrap') || s.includes('workspace is untrusted')) return;
+    webview.postMessage({ type: 'chunk', text: s, done: false, isStderr: true });
   });
 
   proc.on('error', (err) => {
@@ -143,7 +146,7 @@ async function handleSend(prompt: string, webview: vscode.Webview, workspace?: s
     if (!hasOutput) {
       // Fallback: try plain exec without --json (some builds don't support --json streaming)
       if (useJson) {
-        const p2 = cp.spawn(musePath, [...(workspace ? ['--workspace', workspace] : []), 'exec', prompt], { cwd: workspace });
+        const p2 = cp.spawn(musePath, ['exec', '--trust-workspace', ...(workspace ? ['--workspace', workspace] : []), prompt], { cwd: workspace });
         let out = '';
         p2.stdout?.on('data', (d: Buffer) => { out += d.toString(); webview.postMessage({ type: 'chunk', text: d.toString(), done: false }); });
         p2.stderr?.on('data', (d: Buffer) => webview.postMessage({ type: 'chunk', text: d.toString(), done: false, isStderr: true }));
