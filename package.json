@@ -10,7 +10,6 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -38,19 +37,40 @@
       ]
     }
   },
+  "astryx": {
+    "theme": "neutral"
+  },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
+    "build:webview": "vite build --config webview/vite.config.ts",
+    "build": "npm run build:webview && npm run compile",
     "watch": "tsc -watch -p ./",
+    "watch:webview": "vite build --config webview/vite.config.ts --watch",
     "lint": "eslint src --ext ts"
   },
   "devDependencies": {
-    "@types/vscode": "^1.80.0",
     "@types/node": "20.x",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@types/vscode": "^1.80.0",
     "typescript": "^5.4.0"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/archil-l/vscode-muse-chat"
+  },
+  "dependencies": {
+    "@astryxdesign/cli": "^0.5.4",
+    "@astryxdesign/core": "^0.5.4",
+    "@astryxdesign/theme-neutral": "^0.5.4",
+    "@heroicons/react": "^2.2.0",
+    "@stylexjs/stylex": "^0.19.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "katex": "^0.16.47",
+    "marked": "^14.1.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "vite": "^6.4.3"
   }
 }
