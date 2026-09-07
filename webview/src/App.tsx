@@ -14,30 +14,33 @@ import {
   ChatSystemMessage,
   ChatToolCalls,
 } from '@astryxdesign/core/Chat';
-import { Avatar } from '@astryxdesign/core/Avatar';
 import { Card } from '@astryxdesign/core/Card';
 import { Markdown } from '@astryxdesign/core/Markdown';
-import { CodeBlock } from '@astryxdesign/core/CodeBlock';
 import { Timestamp } from '@astryxdesign/core/Timestamp';
 import { Token } from '@astryxdesign/core/Token';
 import { Button } from '@astryxdesign/core/Button';
 import { Icon } from '@astryxdesign/core/Icon';
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
-import { DropdownMenu } from '@astryxdesign/core/DropdownMenu';
 import { Toolbar } from '@astryxdesign/core/Toolbar';
+import { DropdownMenu } from '@astryxdesign/core/DropdownMenu';
 import { useResizable, ResizeHandle } from '@astryxdesign/core/Resizable';
+import { createStaticSource } from '@astryxdesign/core/Typeahead';
+import { TypeaheadItem } from '@astryxdesign/core/Typeahead';
+import type { SearchableItem } from '@astryxdesign/core/Typeahead';
+import type { ChatComposerTrigger } from '@astryxdesign/core/Chat';
 
 import {
   DocumentTextIcon,
   ClipboardDocumentIcon,
   ShareIcon,
-  AtSymbolIcon,
-  PaperClipIcon,
   XMarkIcon,
   ChevronRightIcon,
   SparklesIcon,
   CommandLineIcon,
   BeakerIcon,
+  ClockIcon,
+  PencilSquareIcon,
+  PlusIcon,
 } from '@heroicons/react/24/outline';
 
 import katex from 'katex';
@@ -45,6 +48,7 @@ import { getVsCodeApi } from './vscode';
 
 // ---------- VS Code bridge types ----------
 type ToolCall = {
+  id?: string;
   name: string;
   target?: string;
   status: 'running' | 'complete' | 'error';
@@ -116,6 +120,22 @@ const AI_CHAT_CSS = `
   .ai-chat-resize-handle { display: none; }
   .ai-chat-artifact-panel { display: none; width: 100%; flex-shrink: 1; }
 }
+/* Slash menu: show more than 4 items */
+div[role="listbox"] { max-height: 320px !important; overflow-y: auto !important; }
+div[role="listbox"] > div[role="group"] { max-height: none; }
+/* Professional header + thinner typography */
+#muse-header { height: 36px; min-height: 36px; display:flex; align-items:center; justify-content:space-between; padding:0 8px 0 12px; border-bottom:1px solid var(--color-border, #e5e7eb); background: var(--color-background, #fff); }
+#muse-header-title { font-size:12.5px; font-weight:500; letter-spacing:0.015em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:0.92; }
+#muse-header-actions { display:flex; gap:4px; }
+.muse-icon-btn { width:26px; height:26px; display:grid; place-items:center; border:none; background:transparent; border-radius:6px; cursor:pointer; opacity:0.72; }
+.muse-icon-btn:hover { background: var(--color-background-lo, #f3f4f6); opacity:1; }
+.muse-icon-btn svg { width:15px; height:15px; stroke-width:1.5; }
+/* thinner fonts globally */
+body, .astryx-text, .astryx-heading { font-weight:380 !important; letter-spacing:0.01em; -webkit-font-smoothing:antialiased; }
+.astryx-text--supporting { font-size:12px !important; }
+#muse-header, .astryx-chat-composer { font-size:12.5px !important; }
+/* Send button: compact */
+button[aria-label="Send"], button:has(svg[data-icon="paper-airplane"]) { width:28px !important; height:28px !important; border-radius:8px !important; }
 `;
 
 // ---------- Artifact demo content (kept from template) ----------
@@ -178,23 +198,71 @@ function ArtifactActions({ onClose }: { onClose?: () => void }) {
   );
 }
 
-// Helper: render assistant content with Markdown + LaTeX + CodeBlock split
+// Helper: render assistant content with refined typography
 function AssistantContent({ text, isStreaming }: { text: string; isStreaming?: boolean }) {
   if (!text) return null;
-  // If text contains a fenced code block, render Markdown will handle it via CodeBlock automatically
-  // We keep a single Markdown; Astryx Markdown already renders code blocks with styling
-  return <Markdown density="compact" isStreaming={isStreaming} inlinePlugins={mathPlugins as never}>{text}</Markdown>;
+  return (
+    <Markdown
+      density="default"
+      headingLevelStart={3}
+      contentWidth={680}
+      isStreaming={isStreaming}
+      inlinePlugins={mathPlugins as never}
+    >
+      {text}
+    </Markdown>
+  );
+}
+
+const SLASH_COMMANDS: SearchableItem<{ description: string }>[] = [
+  { id: 'clear', label: 'clear', auxiliaryData: { description: 'Clear the chat log' } },
+  { id: 'help', label: 'help', auxiliaryData: { description: 'Show available commands' } },
+  { id: 'resume', label: 'resume', auxiliaryData: { description: 'Resume a session (shows picker)' } },
+  { id: 'resume-last', label: 'resume --last', auxiliaryData: { description: 'Resume the most recent session' } },
+  { id: 'new', label: 'new', auxiliaryData: { description: 'Start a new session' } },
+  { id: 'compact', label: 'compact', auxiliaryData: { description: 'Compact session context' } },
+  { id: 'fork', label: 'fork', auxiliaryData: { description: 'Fork session at cursor' } },
+  { id: 'model', label: 'model', auxiliaryData: { description: 'List or set model' } },
+  { id: 'approval-mode', label: 'approval-mode', auxiliaryData: { description: 'Set approval mode (untrusted|on-request|never)' } },
+  { id: 'sessions', label: 'sessions', auxiliaryData: { description: 'List recent sessions' } },
+  { id: 'skills', label: 'skills', auxiliaryData: { description: 'List enabled skills' } },
+  { id: 'export', label: 'export', auxiliaryData: { description: 'Export transcript' } },
+  { id: 'trace', label: 'trace', auxiliaryData: { description: 'Inspect last trace' } },
+];
+
+const slashCommandSource = createStaticSource(SLASH_COMMANDS);
+// debug: verify slash commands are loaded
+if (typeof window !== 'undefined') {
+  console.log('[muse-chat] SLASH_COMMANDS', SLASH_COMMANDS.map(c=>c.label));
 }
 
 export default function App() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
   const [isBusy, setIsBusy] = useState(false);
-  const [composerMode, setComposerMode] = useState<'ask' | 'edit'>('ask');
-  const [isArtifactOpen, setIsArtifactOpen] = useState(false);
+  const [isArtifactOpen] = useState(false);
   const [isArtifactDialogOpen, setIsArtifactDialogOpen] = useState(false);
+  const [sessionPicker, setSessionPicker] = useState<any[] | null>(null);
+  const [modelPicker, setModelPicker] = useState<any[] | null>(null);
+  const [pendingUserInput, setPendingUserInput] = useState<any | null>(null);
+  const [pendingApproval, setPendingApproval] = useState<any | null>(null);
+  // per-question selection state for userInput dialog
+  const [uiSelections, setUiSelections] = useState<Record<string, any>>({});
   const rootRef = useRef<HTMLDivElement>(null) as React.RefObject<HTMLDivElement>;
   const listRef = useRef<HTMLDivElement>(null);
+
+  const slashTrigger: ChatComposerTrigger = {
+    character: '/',
+    searchSource: slashCommandSource,
+    renderItem: (item) => (
+      <TypeaheadItem item={item} description={(item.auxiliaryData as { description: string })?.description} />
+    ),
+    onSelect: (item) => ({
+      value: `/${item.label}`,
+      label: `/${item.label}`,
+      variant: 'yellow' as const,
+    }),
+  };
 
   const artifactResize = useResizable({ defaultSize: 560, minSizePx: 400, maxSizePx: 860, autoSaveId: 'ai-chat-artifact-panel' });
 
@@ -214,30 +282,71 @@ export default function App() {
         setIsBusy(false);
         return;
       }
+      if (msg.type === 'session_list') {
+        setSessionPicker(msg.sessions ?? []);
+        return;
+      }
+      if (msg.type === 'model_list') {
+        setModelPicker(msg.models ?? msg.modelList ?? []);
+        return;
+      }
+      if (msg.type === 'user_input_requested') {
+        setPendingUserInput(msg);
+        setUiSelections({});
+        return;
+      }
+      if (msg.type === 'approval_requested') {
+        setPendingApproval(msg);
+        return;
+      }
+      if (msg.type === 'replay_user') {
+        const now = new Date().toISOString();
+        setMessages((prev) => [...prev, { id: `u-replay-${Date.now()}`, role: 'user', content: String(msg.text ?? ''), timestamp: now }]);
+        return;
+      }
       if (msg.type === 'tool_call') {
-        const call: ToolCall = {
-          name: String(msg.name ?? 'tool'),
-          target: msg.args ? String(msg.args).slice(0, 120) : undefined,
-          status: msg.status === 'error' ? 'error' : msg.status === 'done' ? 'complete' : 'running',
-          duration: undefined,
-        };
+        const incomingId = String(msg.id ?? msg.name ?? 'tool');
+        const incomingName = String(msg.name ?? 'tool');
+        const rawTarget = msg.args ? String(msg.args) : '';
+        const incomingTarget = rawTarget ? rawTarget.slice(0, 180) : undefined;
+        const incomingStatus: ToolCall['status'] =
+          msg.status === 'error' ? 'error' : msg.status === 'done' ? 'complete' : 'running';
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (!last || last.role !== 'assistant') return prev;
           const next = [...prev];
-          const updated: ChatMsg = {
-            ...last,
-            toolCalls: [...(last.toolCalls ?? []), call],
-          };
-          // update existing running call to done, or append
-          // If last tool call with same name+target exists and is running, replace it
-          const existingIdx = (last.toolCalls ?? []).findIndex((c) => c.name === call.name && c.target === call.target && c.status === 'running');
-          if (existingIdx >= 0 && call.status === 'complete') {
-            const tc = [...(last.toolCalls ?? [])];
-            tc[existingIdx] = { ...tc[existingIdx], status: 'complete' };
-            updated.toolCalls = tc;
+          let toolCalls = last.toolCalls ?? [];
+          const idx = toolCalls.findIndex((c) => c.id === incomingId);
+          if (idx >= 0) {
+            const existing = toolCalls[idx];
+            const mergedTarget = incomingTarget && incomingTarget.length > 0 ? incomingTarget : existing.target;
+            const updatedCall: ToolCall = {
+              ...existing,
+              name: incomingName,
+              target: mergedTarget,
+              status: incomingStatus,
+            };
+            toolCalls = [...toolCalls];
+            toolCalls[idx] = updatedCall;
+          } else {
+            // Fallback: if a running call with same name exists and incoming is complete, transition it
+            const runningIdx = toolCalls.findIndex((c) => c.name === incomingName && c.status === 'running');
+            if (runningIdx >= 0 && incomingStatus === 'complete' && !incomingId.startsWith('generic-')) {
+              const existing = toolCalls[runningIdx];
+              const mergedTarget = incomingTarget && incomingTarget.length > 0 ? incomingTarget : existing.target;
+              toolCalls = [...toolCalls];
+              toolCalls[runningIdx] = { ...existing, id: incomingId, target: mergedTarget, status: 'complete' };
+            } else {
+              const call: ToolCall = {
+                id: incomingId,
+                name: incomingName,
+                target: incomingTarget,
+                status: incomingStatus,
+              };
+              toolCalls = [...toolCalls, call];
+            }
           }
-          next[next.length - 1] = updated;
+          next[next.length - 1] = { ...last, toolCalls };
           return next;
         });
         return;
@@ -288,6 +397,11 @@ export default function App() {
             last = { id: `a-${Date.now()}`, role: 'assistant', content: '', timestamp: new Date().toISOString(), isStreaming: true };
             next.push(last);
           }
+          // Mark any still-running tool calls as complete when stream ends (prevents stuck spinner)
+          let toolCalls = last.toolCalls;
+          if (done && toolCalls && toolCalls.some((c) => c.status === 'running')) {
+            toolCalls = toolCalls.map((c) => (c.status === 'running' ? { ...c, status: 'complete' as const } : c));
+          }
           // Append text to last assistant
           const updated: ChatMsg = {
             ...last,
@@ -295,6 +409,7 @@ export default function App() {
             isStreaming: !done,
             isError: isError || last.isError,
             isStderr: isStderr || (last as unknown as { isStderr?: boolean }).isStderr,
+            toolCalls,
             timestamp: new Date().toISOString(),
           };
           next[next.length - 1] = updated;
@@ -332,9 +447,36 @@ export default function App() {
     { label: 'Debug help', icon: SparklesIcon, hint: 'Help me debug an error: `Cannot read property of undefined`' },
   ];
 
+  // derive conversation title from first user message — v0.1.1 (Ask anything)
+  const conversationTitle = messages.find(m=>m.role==='user')?.content.slice(0,48) ?? 'New conversation • v0.1.1';
+  const handleNewConversation = () => {
+    setMessages([]); setIsBusy(false);
+    getVsCodeApi().postMessage({ type:'send', text:'/new' });
+  };
+  const handleHistory = () => {
+    getVsCodeApi().postMessage({ type:'session_list_request' });
+    // also trigger slash picker via extension
+    getVsCodeApi().postMessage({ type:'send', text:'/resume' });
+  };
+
   return (
     <VStack ref={rootRef as never} style={root}>
       <style>{AI_CHAT_CSS}</style>
+      {/* Professional header: title + history + new */}
+      <div id="muse-header" role="banner">
+        <div style={{display:'flex', alignItems:'center', gap:8, minWidth:0, flex:1} as CSSProperties}>
+          <div style={{width:5, height:5, borderRadius:5, background:'#2ea043', flexShrink:0, opacity:0.9} as CSSProperties} />
+          <div id="muse-header-title" title={conversationTitle}>{conversationTitle.length>48 ? conversationTitle.slice(0,47)+'…' : conversationTitle}</div>
+        </div>
+        <div id="muse-header-actions">
+          <button className="muse-icon-btn" aria-label="History" title="History" onClick={handleHistory}>
+            <Icon icon={ClockIcon} size="sm" />
+          </button>
+          <button className="muse-icon-btn" aria-label="New conversation" title="New conversation" onClick={handleNewConversation}>
+            <Icon icon={PencilSquareIcon} size="sm" />
+          </button>
+        </div>
+      </div>
       <Layout height="fill" content={<LayoutContent padding={0}><HStack height="100%">
         {/* Chat column */}
         <VStack style={chatColumn}>
@@ -344,26 +486,8 @@ export default function App() {
             composer={
               <ChatComposer
                 onSubmit={(value: string) => send(value)}
-                placeholder="Message Muse — type / for commands"
-                input={<ChatComposerInput value={input} onChange={(e: unknown) => setInput(e as string)} onSubmit={(v: string) => send(v)} />}
-                headerActions={
-                  <>
-                    <Button label="Mention" variant="ghost" size="sm" icon={<Icon icon={AtSymbolIcon} size="sm" />} isIconOnly />
-                    <Button label="Attach" variant="ghost" size="sm" icon={<Icon icon={PaperClipIcon} size="sm" />} isIconOnly />
-                    {isArtifactOpen && (
-                      <Button label="Show artifact" variant="ghost" size="sm" icon={<Icon icon={DocumentTextIcon} size="sm" />} onClick={openArtifact} />
-                    )}
-                  </>
-                }
-                footerActions={
-                  <DropdownMenu
-                    button={{ label: composerMode === 'ask' ? 'Ask' : 'Edit', variant: 'ghost', size: 'sm' }}
-                    items={[
-                      { label: 'Ask', onClick: () => setComposerMode('ask') },
-                      { label: 'Edit', onClick: () => setComposerMode('edit') },
-                    ]}
-                  />
-                }
+                placeholder="Ask anything — type / for commands"
+                input={<ChatComposerInput value={input} onChange={(e: unknown) => setInput(e as string)} onSubmit={(v: string) => send(v)} triggers={[slashTrigger]} />}
               />
             }
           >
@@ -401,13 +525,13 @@ export default function App() {
                       m.role === 'user' ? (
                         <ChatMessage key={m.id} sender="user">
                           <ChatMessageBubble
-                            metadata={<ChatMessageMetadata timestamp={<Timestamp value={m.timestamp} format="time" />} status="delivered" />}
+                            metadata={<ChatMessageMetadata timestamp={<Timestamp value={m.timestamp} format="time" />} />}
                           >
-                            <Markdown density="compact" inlinePlugins={mathPlugins as never}>{m.content}</Markdown>
+                            <Markdown density="default" headingLevelStart={3} contentWidth={640} inlinePlugins={mathPlugins as never}>{m.content}</Markdown>
                           </ChatMessageBubble>
                         </ChatMessage>
                       ) : (
-                        <ChatMessage key={m.id} sender="assistant" avatar={<Avatar name="Muse" size="md" />}>
+                        <ChatMessage key={m.id} sender="assistant">
                           {m.thinking ? (
                             <ChatToolCalls
                               defaultIsExpanded={m.thinkingOpen}
@@ -505,6 +629,178 @@ export default function App() {
       {/* Mobile dialog */}
       <Dialog isOpen={isArtifactDialogOpen} onOpenChange={setIsArtifactDialogOpen} purpose="info" variant="fullscreen">
         <Layout header={<DialogHeader title={ARTIFACT_TITLE} subtitle={ARTIFACT_SUBTITLE} hasDivider onOpenChange={setIsArtifactDialogOpen} />} content={<LayoutContent padding={0}><ArtifactBody /></LayoutContent>} />
+      </Dialog>
+
+      {/* Session picker for /resume */}
+      <Dialog isOpen={!!sessionPicker} onOpenChange={(o)=> !o && setSessionPicker(null)} purpose="info" variant="default">
+        <Layout header={<DialogHeader title="Resume session" subtitle={`${sessionPicker?.length ?? 0} recent sessions`} hasDivider onOpenChange={(o)=> !o && setSessionPicker(null)} />} content={
+          <LayoutContent padding={4}>
+            <VStack gap={2}>
+              {sessionPicker?.length === 0 && <Text type="supporting" color="secondary">No sessions</Text>}
+              {sessionPicker?.map((s:any)=> (
+                <Card key={s.sessionId} variant="muted" padding={3} style={{cursor:'pointer'} as CSSProperties} onClick={()=>{
+                  getVsCodeApi().postMessage({ type:'session_pick', sessionId: s.sessionId });
+                  setSessionPicker(null);
+                }}>
+                  <VStack gap={1}>
+                    <Text type="label" weight="semibold" style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'} as CSSProperties}>{s.title || 'Untitled'}</Text>
+                    <Text type="supporting" color="secondary" style={{fontSize:'11px'} as CSSProperties}>{s.sessionId?.slice(0,8)} · {s.workspaceRoot ?? ''} {s.updatedAt ? '· ' + new Date(Number(String(s.updatedAt).length>10 ? s.updatedAt/1000 : s.updatedAt*1000)).toLocaleString() : ''}</Text>
+                  </VStack>
+                </Card>
+              ))}
+              <Button label="Cancel" variant="ghost" size="sm" onClick={()=> setSessionPicker(null)} />
+            </VStack>
+          </LayoutContent>
+        } />
+      </Dialog>
+
+      {/* Model picker */}
+      <Dialog isOpen={!!modelPicker} onOpenChange={(o)=> !o && setModelPicker(null)} purpose="info" variant="default">
+        <Layout header={<DialogHeader title="Select model" subtitle={`${modelPicker?.length ?? 0} models`} hasDivider onOpenChange={(o)=> !o && setModelPicker(null)} />} content={
+          <LayoutContent padding={4}>
+            <VStack gap={2}>
+              {modelPicker?.map((m:any)=> {
+                const id = m.id ?? m.modelId ?? m.model_id ?? String(m);
+                const label = m.displayName ?? m.label ?? id;
+                return (
+                  <Card key={id} variant="muted" padding={3} style={{cursor:'pointer'} as CSSProperties} onClick={()=>{
+                    getVsCodeApi().postMessage({ type:'model_pick', modelId: id });
+                    setModelPicker(null);
+                  }}>
+                    <VStack gap={0}>
+                      <Text type="label" weight="semibold">{label}</Text>
+                      <Text type="supporting" color="secondary">{id}</Text>
+                    </VStack>
+                  </Card>
+                );
+              })}
+              <Button label="Cancel" variant="ghost" size="sm" onClick={()=> setModelPicker(null)} />
+            </VStack>
+          </LayoutContent>
+        } />
+      </Dialog>
+
+      {/* UserInput questions — interactive prompts from model */}
+      <Dialog isOpen={!!pendingUserInput} onOpenChange={(o)=> !o && setPendingUserInput(null)} purpose="info" variant="default">
+        {pendingUserInput && (
+          <Layout header={<DialogHeader title={pendingUserInput.toolName ? `Input: ${pendingUserInput.toolName}` : 'Question'} subtitle={pendingUserInput.questions?.length ? `${pendingUserInput.questions.length} question(s)` : undefined} hasDivider onOpenChange={(o)=> !o && setPendingUserInput(null)} />} content={
+            <LayoutContent padding={4}>
+              <VStack gap={4}>
+                {pendingUserInput.questions?.map((q:any)=> (
+                  <VStack key={q.id} gap={2} style={{border:'1px solid var(--color-border)', borderRadius:8, padding:12} as CSSProperties}>
+                    <Text type="label" weight="semibold" color="secondary" style={{fontSize:'11px', letterSpacing:'0.04em', textTransform:'uppercase'} as CSSProperties}>{q.header}</Text>
+                    <Text type="body" weight="medium">{q.question}</Text>
+                    <VStack gap={1}>
+                      {q.options?.map((opt:any)=> {
+                        const isSingle = q.selection?.mode === 'single';
+                        const selected = uiSelections[q.id];
+                        const isSelected = isSingle ? selected === opt.label : Array.isArray(selected) && selected.includes(opt.label);
+                        return (
+                          <Card key={opt.label} variant={isSelected ? 'selected' as any : 'muted'} padding={2} style={{cursor:'pointer', borderColor: isSelected ? 'var(--color-border-strong)' : undefined} as CSSProperties} onClick={()=>{
+                            if(isSingle){
+                              setUiSelections(prev=> ({...prev, [q.id]: opt.label}));
+                            } else {
+                              setUiSelections(prev=> {
+                                const cur:string[] = Array.isArray(prev[q.id]) ? prev[q.id] : [];
+                                const next = cur.includes(opt.label) ? cur.filter(x=> x!==opt.label) : [...cur, opt.label];
+                                // enforce max
+                                const max = q.selection?.maxSelections;
+                                if(max && next.length>max) return prev;
+                                return {...prev, [q.id]: next};
+                              });
+                            }
+                          }}>
+                            <HStack gap={2} vAlign="center">
+                              <div style={{width:16, height:16, borderRadius: isSingle ? 8 : 4, border:'1px solid var(--color-border)', background: isSelected ? 'var(--color-background-selected)' : 'transparent', display:'grid', placeItems:'center'} as CSSProperties}>
+                                {isSelected && <span style={{width:8, height:8, borderRadius: isSingle?4:2, background:'var(--color-foreground)'} as CSSProperties} />}
+                              </div>
+                              <VStack gap={0} style={{flex:1} as CSSProperties}>
+                                <Text type="label">{opt.label}</Text>
+                                {opt.description && <Text type="supporting" color="secondary" style={{fontSize:'11px'} as CSSProperties}>{opt.description}</Text>}
+                              </VStack>
+                            </HStack>
+                          </Card>
+                        );
+                      })}
+                    </VStack>
+                    {/* free text fallback */}
+                    <VStack gap={1}>
+                      <Text type="supporting" color="secondary" style={{fontSize:'11px'} as CSSProperties}>Or free text (max 500)</Text>
+                      <input
+                        style={{width:'100%', padding:'8px', borderRadius:6, border:'1px solid var(--color-border)', background:'var(--color-background)', fontSize:'12px'}}
+                        placeholder="Type answer…"
+                        value={typeof uiSelections[q.id]==='string' && !q.options?.some((o:any)=> o.label===uiSelections[q.id]) ? uiSelections[q.id] : (Array.isArray(uiSelections[q.id]) ? '' : '')}
+                        onChange={(e)=>{
+                          const v=e.target.value;
+                          // if options exist, free text overrides selection
+                          setUiSelections(prev=> ({...prev, [q.id]: v}));
+                        }}
+                      />
+                    </VStack>
+                  </VStack>
+                ))}
+                <HStack gap={2} style={{justifyContent:'flex-end'} as CSSProperties}>
+                  <Button label="Cancel" variant="ghost" size="sm" onClick={()=>{
+                    getVsCodeApi().postMessage({ type:'user_input_answer', userInputId: pendingUserInput.userInputId, sessionId: pendingUserInput.sessionId, answers: [] });
+                    // also need to handle cancel via userInput/cancel — send empty with cancel semantics
+                    getVsCodeApi().postMessage({ type:'approval_decide', approvalId: pendingUserInput.userInputId, sessionId: pendingUserInput.sessionId } as any);
+                    setPendingUserInput(null);
+                  }} />
+                  <Button label="Submit" variant="primary" size="sm" onClick={()=>{
+                    const answers = pendingUserInput.questions.map((q:any)=>{
+                      const sel = uiSelections[q.id];
+                      if(Array.isArray(sel)){
+                        return { questionId: q.id, selectedLabels: sel };
+                      } else if(typeof sel === 'string' && q.options?.some((o:any)=> o.label===sel)){
+                        return { questionId: q.id, selectedLabel: sel };
+                      } else if(typeof sel === 'string' && sel.trim()){
+                        return { questionId: q.id, freeText: sel.slice(0,500) };
+                      } else {
+                        // default to first option if required
+                        if(q.selection?.mode==='single' && q.options?.[0]) return { questionId: q.id, selectedLabel: q.options[0].label };
+                        return { questionId: q.id, freeText: '' };
+                      }
+                    });
+                    getVsCodeApi().postMessage({ type:'user_input_answer', userInputId: pendingUserInput.userInputId, sessionId: pendingUserInput.sessionId, answers });
+                    setPendingUserInput(null);
+                  }} />
+                </HStack>
+              </VStack>
+            </LayoutContent>
+          } />
+        )}
+      </Dialog>
+
+      {/* Approval dialog */}
+      <Dialog isOpen={!!pendingApproval} onOpenChange={(o)=> !o && setPendingApproval(null)} purpose="info" variant="default">
+        {pendingApproval && (
+          <Layout header={<DialogHeader title={`Approval: ${pendingApproval.toolName ?? 'tool'}`} subtitle={pendingApproval.subject?.kind ? `${pendingApproval.subject.kind}${pendingApproval.subject.command ? ' — '+pendingApproval.subject.command.slice(0,80) : ''}` : undefined} hasDivider onOpenChange={(o)=> !o && setPendingApproval(null)} />} content={
+            <LayoutContent padding={4}>
+              <VStack gap={3}>
+                {pendingApproval.subject && (
+                  <Card variant="muted" padding={3}>
+                    <VStack gap={1}>
+                      {pendingApproval.subject.command && <Text type="body" style={{fontFamily:'var(--font-mono)', fontSize:'11px', whiteSpace:'pre-wrap'} as CSSProperties}>{pendingApproval.subject.command}</Text>}
+                      {pendingApproval.subject.path && <Text type="supporting" color="secondary">Path: {pendingApproval.subject.path}</Text>}
+                      {pendingApproval.subject.target && <Text type="supporting" color="secondary">Target: {pendingApproval.subject.target}</Text>}
+                      {pendingApproval.subject.host && <Text type="supporting" color="secondary">Host: {pendingApproval.subject.host}{pendingApproval.subject.port ? ':'+pendingApproval.subject.port : ''}</Text>}
+                    </VStack>
+                  </Card>
+                )}
+                <VStack gap={2}>
+                  {pendingApproval.choices?.map((c:any)=> (
+                    <Button key={c.choiceId} label={c.label} variant={c.decision==='allow' ? 'primary' as any : 'secondary'} size="sm" onClick={()=>{
+                      getVsCodeApi().postMessage({ type:'approval_decide', approvalId: pendingApproval.approvalId, choiceId: c.choiceId, sessionId: pendingApproval.sessionId });
+                      setPendingApproval(null);
+                    }} />
+                  ))}
+                  {!pendingApproval.choices?.length && <Text type="supporting" color="secondary">No choices</Text>}
+                </VStack>
+                <Button label="Dismiss" variant="ghost" size="sm" onClick={()=> setPendingApproval(null)} />
+              </VStack>
+            </LayoutContent>
+          } />
+        )}
       </Dialog>
     </VStack>
   );

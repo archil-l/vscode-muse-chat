@@ -2,7 +2,7 @@
   "name": "vscode-muse-chat",
   "displayName": "Muse Chat (LaTeX)",
   "description": "VS Code webview chat for Muse Code (Meta Muse Spark) with Markdown + LaTeX (KaTeX) rendering",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "archil-l",
   "engines": {
     "vscode": "^1.80.0"
