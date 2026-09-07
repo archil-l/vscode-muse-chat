@@ -66,8 +66,49 @@ function getMusePath(): string {
   return 'muse';
 }
 
+async function handleSlash(prompt: string, webview: vscode.Webview, workspace?: string): Promise<boolean> {
+  const trimmed = prompt.trim();
+  if (!trimmed.startsWith('/')) return false;
+  const parts = trimmed.split(/\s+/);
+  const cmd = parts[0].toLowerCase();
+  const musePath = getMusePath();
+  if (cmd === '/clear') {
+    webview.postMessage({ type: 'clear' });
+    return true;
+  }
+  if (cmd === '/help') {
+    const help = `**Muse Chat — slash commands**\n\n- \`/resume\` — resume the most recent session in this workspace (\`muse resume --last\`)\n- \`/resume <id>\` — resume a specific session\n- \`/help\` — this help\n- \`/clear\` — clear the chat log\n\nEverything else is sent as a prompt to \`muse exec\`.`;
+    webview.postMessage({ type: 'chunk', text: help, done: false });
+    webview.postMessage({ type: 'chunk', text: '', done: true });
+    return true;
+  }
+  if (cmd === '/resume') {
+    const target = parts[1];
+    const args = target ? ['resume', target] : ['resume', '--last'];
+    // resume respects --trust-workspace / --disable-sandbox as global flags; put before command
+    // but `resume` help says root options may appear on either side — use exec-style order for consistency
+    const resumeArgs = [...args, '--trust-workspace', '--disable-sandbox'];
+    if (workspace) resumeArgs.push('--workspace', workspace);
+    // Spawn muse resume (TUI) headlessly — it will print picker or resume info
+    const proc = cp.spawn(musePath, resumeArgs, { cwd: workspace, env: { ...process.env } });
+    let out = '';
+    proc.stdout?.on('data', (d: Buffer) => { const s = d.toString(); out += s; webview.postMessage({ type: 'chunk', text: s, done: false }); });
+    proc.stderr?.on('data', (d: Buffer) => { const s = d.toString(); if (s.includes('Linux sandbox') || s.includes('Bubblewrap')) return; webview.postMessage({ type: 'chunk', text: s, done: false, isStderr: true }); });
+    proc.on('error', (e: any) => webview.postMessage({ type: 'chunk', text: `resume spawn error: ${e.message}`, done: true, isError: true }));
+    proc.on('close', (code) => {
+      if (!out.trim()) webview.postMessage({ type: 'chunk', text: `(muse resume exited ${code} — no output; try terminal: \`muse resume --last\`)\n`, done: false });
+      webview.postMessage({ type: 'chunk', text: '', done: true });
+    });
+    return true;
+  }
+  // Unknown slash — show hint and stop exec forwarding
+  webview.postMessage({ type: 'chunk', text: `Unknown command \`${cmd}\`. Try \`/help\`.`, done: true, isError: true });
+  return true;
+}
+
 async function handleSend(prompt: string, webview: vscode.Webview, workspace?: string) {
   if (!prompt.trim()) return;
+  if (await handleSlash(prompt, webview, workspace)) return;
   const musePath = getMusePath();
   // Correct order: `muse exec [OPTIONS] [PROMPT]` — exec first, then its flags
   // --disable-sandbox avoids bwrap user-namespace failures on hosts without unshare (this box)
@@ -252,6 +293,12 @@ function startAssistant(){
 
 window.addEventListener('message', e=>{
   const m = e.data;
+  if (m.type === 'clear'){
+    log.innerHTML = '';
+    pendingAssistant = null;
+    pendingText = '';
+    return;
+  }
   if (m.type === 'chunk'){
     if (!pendingAssistant) startAssistant();
     if (m.isStderr){
