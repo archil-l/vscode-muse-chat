@@ -123,12 +123,12 @@ const AI_CHAT_CSS = `
 /* Slash menu: show more than 4 items */
 div[role="listbox"] { max-height: 320px !important; overflow-y: auto !important; }
 div[role="listbox"] > div[role="group"] { max-height: none; }
-/* Professional header + thinner typography */
-#muse-header { height: 36px; min-height: 36px; display:flex; align-items:center; justify-content:space-between; padding:0 8px 0 12px; border-bottom:1px solid var(--color-border, #e5e7eb); background: var(--color-background, #fff); }
-#muse-header-title { font-size:12.5px; font-weight:500; letter-spacing:0.015em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:0.92; }
+/* Professional header + thinner typography — VS Code theme aware, no raw #fff */
+#muse-header { height: 36px; min-height: 36px; display:flex; align-items:center; justify-content:space-between; padding:0 8px 0 12px; border-bottom:1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, var(--color-border, #e5e7eb))); background: var(--vscode-sideBar-background, var(--color-background, transparent)); color: var(--vscode-foreground, var(--color-foreground, inherit)); }
+#muse-header-title { font-size:12.5px; font-weight:500; letter-spacing:0.015em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:0.92; color: var(--vscode-sideBarTitle-foreground, var(--vscode-foreground, currentColor)); }
 #muse-header-actions { display:flex; gap:4px; }
-.muse-icon-btn { width:26px; height:26px; display:grid; place-items:center; border:none; background:transparent; border-radius:6px; cursor:pointer; opacity:0.72; }
-.muse-icon-btn:hover { background: var(--color-background-lo, #f3f4f6); opacity:1; }
+.muse-icon-btn { width:26px; height:26px; display:grid; place-items:center; border:none; background:transparent; border-radius:6px; cursor:pointer; opacity:0.72; color: var(--vscode-icon-foreground, var(--vscode-foreground, currentColor)); }
+.muse-icon-btn:hover { background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground, var(--color-background-lo, #f3f4f6))); opacity:1; }
 .muse-icon-btn svg { width:15px; height:15px; stroke-width:1.5; }
 /* thinner fonts globally */
 body, .astryx-text, .astryx-heading { font-weight:380 !important; letter-spacing:0.01em; -webkit-font-smoothing:antialiased; }
