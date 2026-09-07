@@ -2,6 +2,8 @@
 
 Project-specific guidance for AI coding agents.
 
+> **VS Code extension — reinstall to see changes:** After `npm run build` (`compile` + `build:webview`) the webview bundle is `media/assets/index-*.js` with cache-bust `?v=` on `webview.asWebviewUri`. The installed VSIX in VS Code stays on the old version until you repack & reinstall: `npx vsce package && code --install-extension vscode-muse-chat-*.vsix --force` then `Developer: Restart Extension Host` (or `Reload Window`). Verify `code --list-extensions --show-versions | grep muse-chat` shows `0.1.1`, header reads `New conversation • v0.1.1`, placeholder `Ask anything — type / for commands`, and `/` shows 13 commands.
+
 <!-- ASTRYX:START -->
 Astryx v0.5.4 · 163 components
 CLI: run every command as `npx astryx <cmd>` (shown below as `astryx ...`).
