@@ -3,3 +3,8 @@ src/**
 .gitignore
 tsconfig.json
 .vscode/**
+node_modules/**
+webview/node_modules/**
+**/*.ts
+**/*.map
+.git/**
