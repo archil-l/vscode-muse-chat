@@ -70,7 +70,8 @@ async function handleSend(prompt: string, webview: vscode.Webview, workspace?: s
   if (!prompt.trim()) return;
   const musePath = getMusePath();
   // Correct order: `muse exec [OPTIONS] [PROMPT]` — exec first, then its flags
-  const args = ['exec', '--json', '--trust-workspace'];
+  // --disable-sandbox avoids bwrap user-namespace failures on hosts without unshare (this box)
+  const args = ['exec', '--json', '--trust-workspace', '--disable-sandbox'];
   if (workspace) args.push('--workspace', workspace);
   // stream JSONL events; fallback to plain if --json not desired
   // For MVP we also run a plain exec to get final text if JSONL parsing fails
@@ -153,7 +154,7 @@ async function handleSend(prompt: string, webview: vscode.Webview, workspace?: s
     if (!hasOutput) {
       // Fallback: try plain exec without --json (some builds don't support --json streaming)
       if (useJson) {
-        const p2 = cp.spawn(musePath, ['exec', '--trust-workspace', ...(workspace ? ['--workspace', workspace] : []), prompt], { cwd: workspace });
+        const p2 = cp.spawn(musePath, ['exec', '--trust-workspace', '--disable-sandbox', ...(workspace ? ['--workspace', workspace] : []), prompt], { cwd: workspace });
         let out = '';
         p2.stdout?.on('data', (d: Buffer) => { out += d.toString(); webview.postMessage({ type: 'chunk', text: d.toString(), done: false }); });
         p2.stderr?.on('data', (d: Buffer) => webview.postMessage({ type: 'chunk', text: d.toString(), done: false, isStderr: true }));
