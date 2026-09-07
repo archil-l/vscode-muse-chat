@@ -101,18 +101,25 @@ async function handleSend(prompt: string, webview: vscode.Webview, workspace?: s
         if (!line.trim()) continue;
         try {
           const ev = JSON.parse(line);
-          // Try common fields; fall back to raw line
-          const t = ev?.delta ?? ev?.text ?? ev?.content ?? ev?.message?.content ?? '';
+          const payload: any = ev?.payload ?? ev;
+          const t = payload?.text ?? payload?.delta ?? ev?.delta ?? ev?.text ?? payload?.content ?? '';
+          const ptype: string = ev?.payload_type ?? ev?.type ?? '';
           if (typeof t === 'string' && t) {
+            // Only forward deltas / results, not status noise
+            if (ptype === 'run.output.delta' || ptype === 'run.terminal.completed' || !ptype || ptype.includes('delta') || ptype.includes('result')) {
+              hasOutput = true;
+              webview.postMessage({ type: 'chunk', text: t, done: false });
+            }
+          } else if (payload?.result) {
+            const rt = typeof payload.result === 'string' ? payload.result : JSON.stringify(payload.result);
             hasOutput = true;
-            webview.postMessage({ type: 'chunk', text: t, done: false });
+            webview.postMessage({ type: 'chunk', text: rt, done: false });
           } else if (ev?.type === 'result' && ev?.result) {
             const rt = typeof ev.result === 'string' ? ev.result : JSON.stringify(ev.result);
             hasOutput = true;
             webview.postMessage({ type: 'chunk', text: rt, done: false });
           }
         } catch {
-          // not JSON — forward as-is
           hasOutput = true;
           webview.postMessage({ type: 'chunk', text: line + '\n', done: false });
         }
