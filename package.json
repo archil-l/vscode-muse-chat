@@ -1,0 +1,56 @@
+{
+  "name": "vscode-muse-chat",
+  "displayName": "Muse Chat (LaTeX)",
+  "description": "VS Code webview chat for Muse Code (Meta Muse Spark) with Markdown + LaTeX (KaTeX) rendering",
+  "version": "0.1.0",
+  "publisher": "archil-l",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vscode-muse-chat.openChat",
+        "title": "Muse Chat: Open Chat (LaTeX)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "muse-chat",
+          "title": "Muse",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "muse-chat": [
+        {
+          "type": "webview",
+          "id": "vscode-muse-chat.chatView",
+          "name": "Chat (LaTeX)"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "20.x",
+    "typescript": "^5.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/archil-l/vscode-muse-chat"
+  }
+}
