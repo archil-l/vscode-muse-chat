@@ -72,5 +72,8 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "vite": "^6.4.3"
-  }
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ]
 }

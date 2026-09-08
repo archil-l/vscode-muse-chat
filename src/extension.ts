@@ -51,6 +51,7 @@ class MusePanel {
     MusePanel.current = new MusePanel(uri);
   }
   private bindWebview(webview: vscode.Webview) {
+    pushStatus(webview, getWorkspace());
     webview.onDidReceiveMessage(async (msg) => {
       if (msg.type === 'send') await handleSend(msg.text, webview, getWorkspace());
       else if (msg.type === 'user_input_answer') await mspManager.handleUserInputAnswer(msg, webview);
@@ -58,7 +59,9 @@ class MusePanel {
       else if (msg.type === 'session_pick') await handleSessionPick(msg.sessionId, webview);
       else if (msg.type === 'model_pick') await handleModelPick(msg.modelId, webview);
       else if (msg.type === 'session_list_request') await handleSlash('/resume', webview, getWorkspace());
+      else if (msg.type === 'get_status' || msg.type === 'request_status') await pushStatus(webview, getWorkspace());
     }, null, this.disposables);
+    webview.onDidReceiveMessage(async ()=> { /* status pushes on session events below */ }, null, this.disposables);
   }
   dispose() { this.disposables.forEach(d => d.dispose()); }
 }
@@ -68,6 +71,7 @@ class MuseChatViewProvider implements vscode.WebviewViewProvider {
   resolveWebviewView(view: vscode.WebviewView) {
     view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media')] };
     view.webview.html = getWebviewHtml(view.webview, this.extensionUri);
+    pushStatus(view.webview, getWorkspace());
     view.webview.onDidReceiveMessage(async (msg) => {
       if (msg.type === 'send') await handleSend(msg.text, view.webview, getWorkspace());
       else if (msg.type === 'user_input_answer') await mspManager.handleUserInputAnswer(msg, view.webview);
@@ -75,6 +79,7 @@ class MuseChatViewProvider implements vscode.WebviewViewProvider {
       else if (msg.type === 'session_pick') await handleSessionPick(msg.sessionId, view.webview);
       else if (msg.type === 'model_pick') await handleModelPick(msg.modelId, view.webview);
       else if (msg.type === 'session_list_request') await handleSlash('/resume', view.webview, getWorkspace());
+      else if (msg.type === 'get_status' || msg.type === 'request_status') await pushStatus(view.webview, getWorkspace());
     });
   }
 }
@@ -90,6 +95,90 @@ function getMusePath(): string {
   const p = cfg.get<string>('muse.path');
   if (p && p.trim()) return p.trim();
   return 'muse';
+}
+
+function getSettingsPath(): string {
+  const xdg = process.env.XDG_CONFIG_HOME;
+  const base = xdg && xdg.trim() ? xdg.trim() : path.join(process.env.HOME ?? '', '.config');
+  return path.join(base, 'muse', 'settings.json');
+}
+
+function readSettings(): { model?: string; reasoning_effort?: string } {
+  try {
+    const p = getSettingsPath();
+    if (!fs.existsSync(p)) return {};
+    const raw = fs.readFileSync(p, 'utf8');
+    const j = JSON.parse(raw);
+    return { model: j.model, reasoning_effort: j.reasoning_effort };
+  } catch { return {}; }
+}
+
+function mapApprovalMode(m: string): string {
+  const map: Record<string,string> = { allowAll: 'never', promptUnmatched: 'untrusted', onRequest: 'on-request', denyUnmatched: 'deny' };
+  return map[m] ?? m;
+}
+
+async function buildStatus(workspace?: string): Promise<Record<string, any>> {
+  const settings = readSettings();
+  const workdir = workspace ?? getWorkspace() ?? process.cwd();
+  const workdirLabel = workdir ? path.basename(workdir) || workdir : '—';
+  // defaults from muse: model muse-spark-1.2-contributor, effort high
+  let model: string | null = settings.model ?? 'muse-spark-1.2-contributor';
+  let effort: string | null = settings.reasoning_effort ?? 'high';
+  let approvalMode: string | null = null;
+  let sandbox: string = 'off';
+  let trust: string = 'trusted';
+
+  // try live session via MSP
+  try {
+    const mgr: any = mspManager as any;
+    const key = workspace ?? getWorkspace() ?? '__global__';
+    const sessEntry = mgr.sessions?.get(key);
+    if (sessEntry?.sessionId) {
+      try {
+        const res = await sessEntry.host.request('session/read', { sessionId: sessEntry.sessionId } as any);
+        const sess = res?.session ?? res;
+        if (sess?.modelId) model = sess.modelId;
+        if (sess?.workspaceRoot) {
+          // prefer live workspaceRoot
+        }
+        if (sess?.approvalMode?.mode) approvalMode = mapApprovalMode(String(sess.approvalMode.mode));
+        // effort: check model/effort from session? not in session, peek last turn if available
+      } catch {}
+    } else {
+      // probe session/list for most recent if no active
+      try {
+        const host = mspManager.getHost(workspace);
+        await host.ensureStarted();
+        const list = await host.request('session/list', { workspaceRoot: workspace, limit: 1 } as any).catch(()=>null);
+        const s = list?.sessions?.[0];
+        if (s?.modelId && !sessEntry) model = s.modelId;
+        if (s?.approvalMode?.mode) approvalMode = mapApprovalMode(String(s.approvalMode.mode));
+      } catch {}
+    }
+  } catch {}
+
+  if (!approvalMode) approvalMode = 'on-request';
+  // derive sandbox/trust from host spawn args (MspHost uses --trust-workspace --disable-sandbox)
+  // surface as permissions mode like muse TUI: yolo/trusted/sandbox
+  const permissionsLabel = `${trust} • sandbox ${sandbox} • ${approvalMode}`;
+
+  return {
+    model,
+    effort,
+    workdir,
+    workdirLabel,
+    approvalMode,
+    sandbox,
+    trust,
+    permissions: permissionsLabel,
+    settingsPath: getSettingsPath(),
+  };
+}
+
+async function pushStatus(webview: vscode.Webview, workspace?: string) {
+  const s = await buildStatus(workspace);
+  webview.postMessage({ type: 'muse_status', status: s });
 }
 
 // ---- MSP Host (serve over stdio JSON-RPC) ----
@@ -278,9 +367,21 @@ class SessionManager {
         wv.postMessage({ type:'chunk', text:'', done:true });
       } else if(method === 'turn/retryScheduled'){
         // transient
+      } else if(method === 'session/modelChanged' || method === 'session/approvalModeChanged' || method === 'session/branchChanged'){
+        // push updated status to webview
+        const ws = workspace ?? getWorkspace();
+        buildStatus(ws).then(s=> wv.postMessage({ type:'muse_status', status: s }));
       }
     };
     for(const wv of targetWebviews) deliver(wv);
+    // also broadcast status changes even if no target matched (e.g. global status bar)
+    if(method === 'session/modelChanged' || method === 'session/approvalModeChanged'){
+      const anyWv = targetWebviews[0] ?? [...this.webviewBySession.values()][0];
+      if(anyWv && targetWebviews.length===0){
+        const ws = workspace ?? getWorkspace();
+        buildStatus(ws).then(s=> anyWv.postMessage({ type:'muse_status', status: s }));
+      }
+    }
   }
 
   async handleUserInputAnswer(msg:any, webview:vscode.Webview){

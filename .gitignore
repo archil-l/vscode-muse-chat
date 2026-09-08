@@ -2,3 +2,6 @@ out/
 node_modules/
 *.vsix
 .vscode-test/
+# Vite compiled config — source is vite.config.ts, Vite reads TS directly
+webview/vite.config.js
+webview/vite.config.js.map
