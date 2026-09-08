@@ -35,22 +35,22 @@ import type { SearchableItem } from '@astryxdesign/core/Typeahead';
 import type { ChatComposerTrigger } from '@astryxdesign/core/Chat';
 import { DocumentTextIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 
-import { getVsCodeApi } from './vscode';
-import type { ChatMsg, MuseStatus } from './components/types';
-import { root, chatColumn, chatLayoutStyle, artifactPanelWidthVar, ARTIFACT_TITLE, ARTIFACT_SUBTITLE } from './components/constants';
-import { chatReducer, chatInitialState } from './reducers/chatReducer';
+import { getVsCodeApi } from './lib/vscode-api';
+import type { ChatMsg, MuseStatus } from './types/chat';
+import { root, chatColumn, chatLayoutStyle, artifactPanelWidthVar, ARTIFACT_TITLE, ARTIFACT_SUBTITLE } from './lib/constants';
+import { chatReducer, chatInitialState } from './reducers/chat-reducer';
 import './styles/chat.css';
-import { mathPlugins } from './components/math-plugins';
-import { MuseHeader } from './components/muse-header';
-import { ChatEmptyState } from './components/chat-empty-state';
-import { ArtifactBody, ArtifactActions } from './components/artifact';
-import { AssistantContent } from './components/assistant-content';
-import { MuseComposer } from './components/muse-composer';
+import { mathPlugins } from './components/common/math-plugins';
+import { MuseHeader } from './components/layout/muse-header';
+import { ChatEmptyState } from './components/chat/chat-empty-state';
+import { ArtifactBody, ArtifactActions } from './components/artifact/artifact';
+import { AssistantContent } from './components/chat/assistant-content';
+import { MuseComposer } from './components/layout/muse-composer';
 import { SessionPickerDialog } from './components/dialogs/session-picker-dialog';
 import { ModelPickerDialog } from './components/dialogs/model-picker-dialog';
 import { UserInputDialog } from './components/dialogs/user-input-dialog';
 import { ApprovalDialog } from './components/dialogs/approval-dialog';
-import { DialogProvider, useDialog } from './context/DialogContext';
+import { DialogProvider, useDialog } from './context/dialog-context';
 
 const SLASH_COMMANDS: SearchableItem<{ description: string }>[] = [
   { id: 'clear', label: 'clear', auxiliaryData: { description: 'Clear the chat log' } },

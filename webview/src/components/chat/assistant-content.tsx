@@ -1,7 +1,7 @@
 'use client';
 
 import { Markdown } from '@astryxdesign/core/Markdown';
-import { mathPlugins } from './math-plugins';
+import { mathPlugins } from '../common/math-plugins';
 
 type Props = {
   text: string;

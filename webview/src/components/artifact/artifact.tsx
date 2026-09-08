@@ -9,8 +9,8 @@ import { Button } from '@astryxdesign/core/Button';
 import { Icon } from '@astryxdesign/core/Icon';
 import { DropdownMenu } from '@astryxdesign/core/DropdownMenu';
 import { DocumentTextIcon, ClipboardDocumentIcon, ShareIcon, XMarkIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import { ARTIFACT_TITLE, ARTIFACT_SUBTITLE, ARTIFACT_CONTENT, artifactScroll, articleBody } from './constants';
-import { mathPlugins } from './math-plugins';
+import { ARTIFACT_TITLE, ARTIFACT_SUBTITLE, ARTIFACT_CONTENT, artifactScroll, articleBody } from '../../lib/constants';
+import { mathPlugins } from '../common/math-plugins';
 
 export const ArtifactBody = () => (
   <VStack gap={2} style={{ ...artifactScroll, padding: 20, maxWidth: 720, marginInline: 'auto', overflowY: 'auto' } as CSSProperties}>

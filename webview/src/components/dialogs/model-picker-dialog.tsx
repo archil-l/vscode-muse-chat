@@ -7,7 +7,7 @@ import { Card } from '@astryxdesign/core/Card';
 import { Button } from '@astryxdesign/core/Button';
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { Layout, LayoutContent } from '@astryxdesign/core/Layout';
-import { useDialog } from '../../context/DialogContext';
+import { useDialog } from '../../context/dialog-context';
 
 type Props = {
   models?: unknown[] | null;

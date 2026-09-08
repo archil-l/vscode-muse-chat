@@ -1,6 +1,6 @@
 'use client';
 
-import type { SessionOption, ApprovalRequest, UserInputRequest, DialogProcessEntry, DialogType, DialogAction } from '../context/DialogContext';
+import type { SessionOption, ApprovalRequest, UserInputRequest, DialogProcessEntry, DialogType, DialogAction } from '../context/dialog-context';
 
 export type DialogState = {
   sessions: SessionOption[] | null;

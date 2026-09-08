@@ -9,7 +9,7 @@ import { Button } from '@astryxdesign/core/Button';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { Layout, LayoutContent } from '@astryxdesign/core/Layout';
-import { useDialog } from '../../context/DialogContext';
+import { useDialog } from '../../context/dialog-context';
 
 type Props = {
   pendingUserInput?: {

@@ -8,8 +8,8 @@ import React, {
   useMemo,
   useReducer,
 } from 'react';
-import { getVsCodeApi } from '../vscode';
-import { dialogReducer, dialogInitialState, getActiveDialog, getOpenDialogCount } from '../reducers/dialogReducer';
+import { getVsCodeApi } from '../lib/vscode-api';
+import { dialogReducer, dialogInitialState, getActiveDialog, getOpenDialogCount } from '../reducers/dialog-reducer';
 
 export type SessionOption = {
   sessionId: string;

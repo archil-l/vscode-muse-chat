@@ -4,9 +4,9 @@ import { Icon } from '@astryxdesign/core/Icon';
 import { DropdownMenu } from '@astryxdesign/core/DropdownMenu';
 import { ChatComposer, ChatComposerInput } from '@astryxdesign/core/Chat';
 import { SparklesIcon, Cog6ToothIcon, FolderIcon } from '@heroicons/react/24/outline';
-import type { MuseStatus } from './types';
+import type { MuseStatus } from '../../types/chat';
 import type { ChatComposerTrigger } from '@astryxdesign/core/Chat';
-import { getVsCodeApi } from '../vscode';
+import { getVsCodeApi } from '../../lib/vscode-api';
 
 type Props = {
   museStatus: MuseStatus | null;

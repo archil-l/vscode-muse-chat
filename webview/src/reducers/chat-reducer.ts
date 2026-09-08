@@ -1,6 +1,6 @@
 'use client';
 
-import type { ChatMsg, ToolCall } from '../components/types';
+import type { ChatMsg, ToolCall } from '../types/chat';
 
 export type ChatState = {
   messages: ChatMsg[];
