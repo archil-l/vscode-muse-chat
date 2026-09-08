@@ -26,9 +26,11 @@ export const MuseHeader = ({ title, onHistory, onNewConversation }: Props) => (
   <HStack gap={2} style={headerStyle} hAlign="between" vAlign="center" paddingInline={3}>
     <HStack gap={2} vAlign="center" style={{ flex: 1, minWidth: 0 } as CSSProperties}>
       <StatusDot variant="success" label="connected" />
-      <Text type="label" weight="semibold" maxLines={1} style={{ letterSpacing: 'var(--spacing-px, 0.015em)', opacity: 0.92 } as CSSProperties} title={title}>
-        {title.length > 48 ? `${title.slice(0, 47)}…` : title}
-      </Text>
+      <span title={title} style={{ display: 'contents' }}>
+        <Text type="label" weight="semibold" maxLines={1} style={{ letterSpacing: 'var(--spacing-px, 0.015em)', opacity: 0.92 } as CSSProperties}>
+          {title.length > 48 ? `${title.slice(0, 47)}…` : title}
+        </Text>
+      </span>
     </HStack>
     <HStack gap={1} vAlign="center">
       <IconButton label="History" icon={<Icon icon={ClockIcon} size="sm" />} variant="ghost" size="sm" tooltip="History" onClick={onHistory} />

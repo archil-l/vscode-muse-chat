@@ -9,10 +9,10 @@ import { Button } from '@astryxdesign/core/Button';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { Layout, LayoutContent } from '@astryxdesign/core/Layout';
-import { getVsCodeApi } from '../../vscode';
+import { useDialog } from '../../context/DialogContext';
 
 type Props = {
-  pendingUserInput: {
+  pendingUserInput?: {
     userInputId: string;
     sessionId: string;
     toolName?: string;
@@ -24,13 +24,20 @@ type Props = {
       options?: { label: string; description?: string }[];
     }[];
   } | null;
-  uiSelections: Record<string, unknown>;
-  setUiSelections: React.Dispatch<React.SetStateAction<Record<string, unknown>>>;
-  onClose: () => void;
+  uiSelections?: Record<string, unknown>;
+  setUiSelections?: React.Dispatch<React.SetStateAction<Record<string, unknown>>>;
+  onClose?: () => void;
 };
 
-export const UserInputDialog = ({ pendingUserInput, uiSelections, setUiSelections, onClose }: Props) => (
-  <Dialog isOpen={!!pendingUserInput} onOpenChange={(o) => !o && onClose()} purpose="info" variant="default">
+export const UserInputDialog = (props: Props) => {
+  const ctx = useDialog();
+  const pendingUserInput = props.pendingUserInput !== undefined ? props.pendingUserInput : ctx.pendingUserInput;
+  const uiSelections = props.uiSelections ?? ctx.uiSelections;
+  const setUiSelections = props.setUiSelections ?? ctx.setUiSelections;
+  const onClose = props.onClose ?? ctx.cancelUserInput;
+  const handleCancel = props.onClose ? () => { ctx.cancelUserInput(); props.onClose?.(); } : ctx.cancelUserInput;
+  return (
+  <Dialog isOpen={!!pendingUserInput} onOpenChange={(o) => !o && onClose()} purpose="info" variant="standard">
     {pendingUserInput && (
       <Layout
         header={
@@ -94,7 +101,9 @@ export const UserInputDialog = ({ pendingUserInput, uiSelections, setUiSelection
                                       borderRadius: isSingle ? 'var(--radius-full, 9999px)' : 'var(--radius-inner, 2px)',
                                       background: 'var(--color-foreground)',
                                     } as CSSProperties}
-                                  />
+                                  >
+                                    <span style={{ display: 'block', width: '100%', height: '100%' }} />
+                                  </Center>
                                 )}
                               </Center>
                               <VStack gap={0} style={{ flex: 1 } as CSSProperties}>
@@ -131,17 +140,14 @@ export const UserInputDialog = ({ pendingUserInput, uiSelections, setUiSelection
                   label="Cancel"
                   variant="ghost"
                   size="sm"
-                  onClick={() => {
-                    getVsCodeApi().postMessage({ type: 'user_input_answer', userInputId: pendingUserInput.userInputId, sessionId: pendingUserInput.sessionId, answers: [] });
-                    getVsCodeApi().postMessage({ type: 'approval_decide', approvalId: pendingUserInput.userInputId, sessionId: pendingUserInput.sessionId } as unknown as Record<string, unknown>);
-                    onClose();
-                  }}
+                  onClick={handleCancel}
                 />
                 <Button
                   label="Submit"
                   variant="primary"
                   size="sm"
                   onClick={() => {
+                    if (!pendingUserInput) return;
                     const answers = pendingUserInput.questions.map((q) => {
                       const sel = uiSelections[q.id];
                       if (Array.isArray(sel)) return { questionId: q.id, selectedLabels: sel };
@@ -150,8 +156,7 @@ export const UserInputDialog = ({ pendingUserInput, uiSelections, setUiSelection
                       if (q.selection?.mode === 'single' && q.options?.[0]) return { questionId: q.id, selectedLabel: q.options[0].label };
                       return { questionId: q.id, freeText: '' };
                     });
-                    getVsCodeApi().postMessage({ type: 'user_input_answer', userInputId: pendingUserInput.userInputId, sessionId: pendingUserInput.sessionId, answers });
-                    onClose();
+                    ctx.submitUserInput(answers as unknown[]);
                   }}
                 />
               </HStack>
@@ -161,4 +166,5 @@ export const UserInputDialog = ({ pendingUserInput, uiSelections, setUiSelection
       />
     )}
   </Dialog>
-);
+  );
+};

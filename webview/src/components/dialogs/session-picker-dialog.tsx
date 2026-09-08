@@ -7,7 +7,7 @@ import { Card } from '@astryxdesign/core/Card';
 import { Button } from '@astryxdesign/core/Button';
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { Layout, LayoutContent } from '@astryxdesign/core/Layout';
-import { getVsCodeApi } from '../../vscode';
+import { useDialog } from '../../context/DialogContext';
 
 type Session = {
   sessionId: string;
@@ -17,12 +17,17 @@ type Session = {
 };
 
 type Props = {
-  sessions: Session[] | null;
-  onClose: () => void;
+  sessions?: Session[] | null;
+  onClose?: () => void;
 };
 
-export const SessionPickerDialog = ({ sessions, onClose }: Props) => (
-  <Dialog isOpen={!!sessions} onOpenChange={(o) => !o && onClose()} purpose="info" variant="default">
+export const SessionPickerDialog = (props: Props) => {
+  const ctx = useDialog();
+  const sessions = props.sessions !== undefined ? props.sessions : (ctx.sessions as Session[] | null);
+  const onClose = props.onClose ?? ctx.closeSessionPicker;
+  const handlePick = props.onClose ? (id: string) => { ctx.pickSession(id); } : ctx.pickSession;
+  return (
+  <Dialog isOpen={!!sessions} onOpenChange={(o) => !o && onClose()} purpose="info" variant="standard">
     <Layout
       header={<DialogHeader title="Resume session" subtitle={`${sessions?.length ?? 0} recent sessions`} hasDivider onOpenChange={(o) => !o && onClose()} />}
       content={
@@ -35,10 +40,7 @@ export const SessionPickerDialog = ({ sessions, onClose }: Props) => (
                 variant="muted"
                 padding={3}
                 style={{ cursor: 'pointer' } as CSSProperties}
-                onClick={() => {
-                  getVsCodeApi().postMessage({ type: 'session_pick', sessionId: s.sessionId });
-                  onClose();
-                }}
+                onClick={() => handlePick(s.sessionId)}
               >
                 <VStack gap={1}>
                   <Text type="label" weight="semibold" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } as CSSProperties}>
@@ -57,4 +59,5 @@ export const SessionPickerDialog = ({ sessions, onClose }: Props) => (
       }
     />
   </Dialog>
-);
+  );
+};

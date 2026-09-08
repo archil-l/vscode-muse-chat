@@ -7,21 +7,25 @@ import { Card } from '@astryxdesign/core/Card';
 import { Button } from '@astryxdesign/core/Button';
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { Layout, LayoutContent } from '@astryxdesign/core/Layout';
-import { getVsCodeApi } from '../../vscode';
+import { useDialog } from '../../context/DialogContext';
 
 type Props = {
-  pendingApproval: {
+  pendingApproval?: {
     approvalId: string;
     sessionId: string;
     toolName?: string;
     subject?: { kind?: string; command?: string; path?: string; target?: string; host?: string; port?: string | number };
     choices?: { choiceId: string; label: string; decision?: string }[];
   } | null;
-  onClose: () => void;
+  onClose?: () => void;
 };
 
-export const ApprovalDialog = ({ pendingApproval, onClose }: Props) => (
-  <Dialog isOpen={!!pendingApproval} onOpenChange={(o) => !o && onClose()} purpose="info" variant="default">
+export const ApprovalDialog = (props: Props) => {
+  const ctx = useDialog();
+  const pendingApproval = props.pendingApproval !== undefined ? props.pendingApproval : ctx.pendingApproval;
+  const onClose = props.onClose ?? ctx.dismissApproval;
+  return (
+  <Dialog isOpen={!!pendingApproval} onOpenChange={(o) => !o && onClose()} purpose="info" variant="standard">
     {pendingApproval && (
       <Layout
         header={
@@ -52,10 +56,7 @@ export const ApprovalDialog = ({ pendingApproval, onClose }: Props) => (
                     label={c.label}
                     variant={c.decision === 'allow' ? ('primary' as unknown as 'secondary') : 'secondary'}
                     size="sm"
-                    onClick={() => {
-                      getVsCodeApi().postMessage({ type: 'approval_decide', approvalId: pendingApproval.approvalId, choiceId: c.choiceId, sessionId: pendingApproval.sessionId });
-                      onClose();
-                    }}
+                    onClick={() => ctx.decideApproval(c.choiceId)}
                   />
                 ))}
                 {!pendingApproval.choices?.length && <Text type="supporting" color="secondary">No choices</Text>}
@@ -67,4 +68,5 @@ export const ApprovalDialog = ({ pendingApproval, onClose }: Props) => (
       />
     )}
   </Dialog>
-);
+  );
+};

@@ -7,15 +7,19 @@ import { Card } from '@astryxdesign/core/Card';
 import { Button } from '@astryxdesign/core/Button';
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { Layout, LayoutContent } from '@astryxdesign/core/Layout';
-import { getVsCodeApi } from '../../vscode';
+import { useDialog } from '../../context/DialogContext';
 
 type Props = {
-  models: unknown[] | null;
-  onClose: () => void;
+  models?: unknown[] | null;
+  onClose?: () => void;
 };
 
-export const ModelPickerDialog = ({ models, onClose }: Props) => (
-  <Dialog isOpen={!!models} onOpenChange={(o) => !o && onClose()} purpose="info" variant="default">
+export const ModelPickerDialog = (props: Props) => {
+  const ctx = useDialog();
+  const models = props.models !== undefined ? props.models : ctx.models;
+  const onClose = props.onClose ?? ctx.closeModelPicker;
+  return (
+  <Dialog isOpen={!!models} onOpenChange={(o) => !o && onClose()} purpose="info" variant="standard">
     <Layout
       header={<DialogHeader title="Select model" subtitle={`${models?.length ?? 0} models`} hasDivider onOpenChange={(o) => !o && onClose()} />}
       content={
@@ -31,10 +35,7 @@ export const ModelPickerDialog = ({ models, onClose }: Props) => (
                   variant="muted"
                   padding={3}
                   style={{ cursor: 'pointer' } as CSSProperties}
-                  onClick={() => {
-                    getVsCodeApi().postMessage({ type: 'model_pick', modelId: id });
-                    onClose();
-                  }}
+                  onClick={() => ctx.pickModel(id)}
                 >
                   <VStack gap={0}>
                     <Text type="label" weight="semibold">{label}</Text>
@@ -49,4 +50,5 @@ export const ModelPickerDialog = ({ models, onClose }: Props) => (
       }
     />
   </Dialog>
-);
+  );
+};

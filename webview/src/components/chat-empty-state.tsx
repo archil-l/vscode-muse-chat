@@ -26,7 +26,7 @@ export const ChatEmptyState = ({ onSuggestionClick }: Props) => (
       <VStack gap={2} style={{ alignItems: 'center' } as CSSProperties}>
         <Heading level={3}>How can I help?</Heading>
         <Text type="supporting" color="secondary" style={{ textAlign: 'center' } as CSSProperties}>
-          Ask anything — code, ideas, or quick questions. Math like <Text as="span" type="inherit" dangerouslySetInnerHTML={{ __html: katex.renderToString('E=mc^2', { throwOnError: false }) }} /> renders inline.
+          Ask anything — code, ideas, or quick questions. Math like <span dangerouslySetInnerHTML={{ __html: katex.renderToString('E=mc^2', { throwOnError: false }) }} /> renders inline.
         </Text>
       </VStack>
       <HStack gap={2} wrap="wrap" style={{ justifyContent: 'center' } as CSSProperties}>

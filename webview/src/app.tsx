@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, type CSSProperties } from 'react';
+import React, { useEffect, useRef, useState, useReducer, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Theme } from '@astryxdesign/core/theme';
 import { neutralTheme } from '@astryxdesign/theme-neutral';
@@ -36,8 +36,9 @@ import type { ChatComposerTrigger } from '@astryxdesign/core/Chat';
 import { DocumentTextIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 
 import { getVsCodeApi } from './vscode';
-import type { ChatMsg, ToolCall, MuseStatus } from './components/types';
-import { root, chatColumn, chatLayoutStyle, artifactScroll, artifactPanelWidthVar, ARTIFACT_TITLE, ARTIFACT_SUBTITLE } from './components/constants';
+import type { ChatMsg, MuseStatus } from './components/types';
+import { root, chatColumn, chatLayoutStyle, artifactPanelWidthVar, ARTIFACT_TITLE, ARTIFACT_SUBTITLE } from './components/constants';
+import { chatReducer, chatInitialState } from './reducers/chatReducer';
 import './styles/chat.css';
 import { mathPlugins } from './components/math-plugins';
 import { MuseHeader } from './components/muse-header';
@@ -49,6 +50,7 @@ import { SessionPickerDialog } from './components/dialogs/session-picker-dialog'
 import { ModelPickerDialog } from './components/dialogs/model-picker-dialog';
 import { UserInputDialog } from './components/dialogs/user-input-dialog';
 import { ApprovalDialog } from './components/dialogs/approval-dialog';
+import { DialogProvider, useDialog } from './context/DialogContext';
 
 const SLASH_COMMANDS: SearchableItem<{ description: string }>[] = [
   { id: 'clear', label: 'clear', auxiliaryData: { description: 'Clear the chat log' } },
@@ -72,18 +74,11 @@ if (typeof window !== 'undefined') {
   console.log('[muse-chat] SLASH_COMMANDS', SLASH_COMMANDS.map((c) => c.label));
 }
 
-const App = () => {
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
+const AppContent = () => {
+  const [{ messages, isBusy }, dispatchChat] = useReducer(chatReducer, chatInitialState);
   const [input, setInput] = useState('');
-  const [isBusy, setIsBusy] = useState(false);
   const [museStatus, setMuseStatus] = useState<MuseStatus | null>(null);
-  const [isArtifactOpen] = useState(false);
-  const [isArtifactDialogOpen, setIsArtifactDialogOpen] = useState(false);
-  const [sessionPicker, setSessionPicker] = useState<unknown[] | null>(null);
-  const [modelPicker, setModelPicker] = useState<unknown[] | null>(null);
-  const [pendingUserInput, setPendingUserInput] = useState<unknown | null>(null);
-  const [pendingApproval, setPendingApproval] = useState<unknown | null>(null);
-  const [uiSelections, setUiSelections] = useState<Record<string, unknown>>({});
+  const { isArtifactOpen, setIsArtifactOpen, isArtifactDialogOpen, setIsArtifactDialogOpen, openArtifact: openArtifactViaDialog } = useDialog();
   const rootRef = useRef<HTMLDivElement>(null) as React.RefObject<HTMLDivElement>;
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -113,14 +108,9 @@ const App = () => {
       const msg = event.data;
       if (!msg || typeof msg.type !== 'string') return;
       if (msg.type === 'muse_status') { setMuseStatus(msg.status ?? null); return; }
-      if (msg.type === 'clear') { setMessages([]); setIsBusy(false); return; }
-      if (msg.type === 'session_list') { setSessionPicker(msg.sessions ?? []); return; }
-      if (msg.type === 'model_list') { setModelPicker(msg.models ?? msg.modelList ?? []); return; }
-      if (msg.type === 'user_input_requested') { setPendingUserInput(msg); setUiSelections({}); return; }
-      if (msg.type === 'approval_requested') { setPendingApproval(msg); return; }
+      if (msg.type === 'clear') { dispatchChat({ type: 'CLEAR' }); return; }
       if (msg.type === 'replay_user') {
-        const now = new Date().toISOString();
-        setMessages((prev) => [...prev, { id: `u-replay-${Date.now()}`, role: 'user', content: String(msg.text ?? ''), timestamp: now }]);
+        dispatchChat({ type: 'REPLAY_USER', text: String(msg.text ?? '') });
         return;
       }
       if (msg.type === 'tool_call') {
@@ -128,64 +118,30 @@ const App = () => {
         const incomingName = String(msg.name ?? 'tool');
         const rawTarget = msg.args ? String(msg.args) : '';
         const incomingTarget = rawTarget ? rawTarget.slice(0, 180) : undefined;
-        const incomingStatus: ToolCall['status'] = msg.status === 'error' ? 'error' : msg.status === 'done' ? 'complete' : 'running';
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (!last || last.role !== 'assistant') return prev;
-          const next = [...prev];
-          let toolCalls = last.toolCalls ?? [];
-          const idx = toolCalls.findIndex((c) => c.id === incomingId);
-          if (idx >= 0) {
-            const existing = toolCalls[idx];
-            const mergedTarget = incomingTarget && incomingTarget.length > 0 ? incomingTarget : existing.target;
-            toolCalls = [...toolCalls]; toolCalls[idx] = { ...existing, name: incomingName, target: mergedTarget, status: incomingStatus };
-          } else {
-            const runningIdx = toolCalls.findIndex((c) => c.name === incomingName && c.status === 'running');
-            if (runningIdx >= 0 && incomingStatus === 'complete' && !incomingId.startsWith('generic-')) {
-              const existing = toolCalls[runningIdx]; const mergedTarget = incomingTarget && incomingTarget.length > 0 ? incomingTarget : existing.target;
-              toolCalls = [...toolCalls]; toolCalls[runningIdx] = { ...existing, id: incomingId, target: mergedTarget, status: 'complete' };
-            } else {
-              toolCalls = [...toolCalls, { id: incomingId, name: incomingName, target: incomingTarget, status: incomingStatus }];
-            }
-          }
-          next[next.length - 1] = { ...last, toolCalls };
-          return next;
-        });
+        const status = msg.status === 'error' ? 'error' : msg.status === 'done' ? 'complete' : 'running';
+        dispatchChat({ type: 'TOOL_CALL', id: incomingId, name: incomingName, target: incomingTarget, status });
         return;
       }
       if (msg.type === 'reasoning_start') {
-        setMessages((prev) => {
-          const last = prev[prev.length - 1]; if (!last || last.role !== 'assistant') return prev;
-          const next = [...prev]; next[next.length - 1] = { ...last, thinking: last.thinking ?? '', thinkingOpen: true }; return next;
-        }); return;
+        dispatchChat({ type: 'REASONING_START' });
+        return;
       }
       if (msg.type === 'reasoning_delta') {
-        const delta = String(msg.text ?? '');
-        setMessages((prev) => {
-          const last = prev[prev.length - 1]; if (!last || last.role !== 'assistant') return prev;
-          const next = [...prev]; next[next.length - 1] = { ...last, thinking: (last.thinking ?? '') + delta, thinkingOpen: true }; return next;
-        }); return;
+        dispatchChat({ type: 'REASONING_DELTA', delta: String(msg.text ?? '') });
+        return;
       }
       if (msg.type === 'reasoning_end') {
-        setMessages((prev) => {
-          const last = prev[prev.length - 1]; if (!last || last.role !== 'assistant') return prev;
-          const next = [...prev]; next[next.length - 1] = { ...last, thinkingOpen: false }; return next;
-        }); return;
+        dispatchChat({ type: 'REASONING_END' });
+        return;
       }
       if (msg.type === 'chunk') {
-        const text = String(msg.text ?? ''); const done = Boolean(msg.done); const isError = Boolean(msg.isError); const isStderr = Boolean(msg.isStderr);
-        setMessages((prev) => {
-          let next = [...prev]; let last = next[next.length - 1];
-          if (!last || last.role !== 'assistant' || (!last.isStreaming && last.content && done)) {
-            last = { id: `a-${Date.now()}`, role: 'assistant', content: '', timestamp: new Date().toISOString(), isStreaming: true };
-            next.push(last);
-          }
-          let toolCalls = last.toolCalls;
-          if (done && toolCalls && toolCalls.some((c) => c.status === 'running')) toolCalls = toolCalls.map((c) => (c.status === 'running' ? { ...c, status: 'complete' as const } : c));
-          const updated: ChatMsg = { ...last, content: last.content + text, isStreaming: !done, isError: isError || last.isError, isStderr: isStderr || (last as unknown as { isStderr?: boolean }).isStderr, toolCalls, timestamp: new Date().toISOString() };
-          next[next.length - 1] = updated; return next;
+        dispatchChat({
+          type: 'CHUNK',
+          text: String(msg.text ?? ''),
+          done: Boolean(msg.done),
+          isError: Boolean(msg.isError),
+          isStderr: Boolean(msg.isStderr),
         });
-        if (done) setIsBusy(false); else setIsBusy(true);
       }
     };
     window.addEventListener('message', handler);
@@ -197,18 +153,18 @@ const App = () => {
     const now = new Date().toISOString();
     const userMsg: ChatMsg = { id: `u-${Date.now()}`, role: 'user', content: trimmed, timestamp: now };
     const assistantMsg: ChatMsg = { id: `a-${Date.now() + 1}`, role: 'assistant', content: '', timestamp: now, isStreaming: true, toolCalls: [] };
-    setMessages((m) => [...m, userMsg, assistantMsg]); setIsBusy(true); setInput('');
+    dispatchChat({ type: 'SEND', userMsg, assistantMsg });
+    setInput('');
     getVsCodeApi().postMessage({ type: 'send', text: trimmed });
   };
 
   const openArtifact = () => {
-    const width = rootRef.current?.offsetWidth ?? Infinity;
-    if (width <= MOBILE_MAX_WIDTH) setIsArtifactDialogOpen(true);
-    else setIsArtifactOpen(true);
+    const width = rootRef.current?.offsetWidth;
+    openArtifactViaDialog(width);
   };
 
   const conversationTitle = messages.find((m) => m.role === 'user')?.content.slice(0, 48) ?? 'New conversation • v0.1.1';
-  const handleNewConversation = () => { setMessages([]); setIsBusy(false); getVsCodeApi().postMessage({ type: 'send', text: '/new' }); };
+  const handleNewConversation = () => { dispatchChat({ type: 'CLEAR' }); getVsCodeApi().postMessage({ type: 'send', text: '/new' }); };
   const handleHistory = () => { getVsCodeApi().postMessage({ type: 'session_list_request' }); getVsCodeApi().postMessage({ type: 'send', text: '/resume' }); };
 
   return (
@@ -248,7 +204,7 @@ const App = () => {
                           {m.thinking ? <ChatToolCalls defaultIsExpanded={m.thinkingOpen} calls={[{ name: 'thinking', target: m.thinking.slice(0, 80), status: m.thinkingOpen ? 'running' : 'complete' }]} /> : null}
                           {m.thinking && m.thinkingOpen ? <ChatMessageBubble variant="ghost"><Text type="supporting" color="secondary" style={{ fontStyle: 'italic', whiteSpace: 'pre-wrap' } as CSSProperties}>{m.thinking}</Text></ChatMessageBubble> : null}
                           {m.toolCalls && m.toolCalls.length > 0 && <ChatToolCalls defaultIsExpanded calls={m.toolCalls.map((c) => ({ name: c.name, target: c.target ?? '', status: c.status === 'running' ? 'running' : c.status === 'complete' ? 'complete' : 'error', duration: c.duration }))} />}
-                          {m.content ? <ChatMessageBubble variant="ghost"><AssistantContent text={m.content} isStreaming={m.isStreaming} />{m.isError && <Text type="supporting" color="negative" style={{ marginTop: 8 } as CSSProperties}>Error</Text>}</ChatMessageBubble> : m.isStreaming ? <ChatMessageBubble variant="ghost"><Text type="supporting" color="secondary">Thinking…</Text></ChatMessageBubble> : null}
+                          {m.content ? <ChatMessageBubble variant="ghost"><AssistantContent text={m.content} isStreaming={m.isStreaming} />{m.isError && <Text type="supporting" style={{ marginTop: 8, color: 'var(--color-error, #d32f2f)' } as CSSProperties}>Error</Text>}</ChatMessageBubble> : m.isStreaming ? <ChatMessageBubble variant="ghost"><Text type="supporting" color="secondary">Thinking…</Text></ChatMessageBubble> : null}
                           {!m.isStreaming && <ChatMessageMetadata timestamp={<Timestamp value={m.timestamp} format="time" />} footer={<Text type="supporting" color="secondary">Muse</Text>} />}
                           {(m.content.includes('ARTIFACT') || m.content.includes('design doc')) ? (
                             <ChatMessageBubble variant="ghost" width="100%">
@@ -287,13 +243,19 @@ const App = () => {
       <Dialog isOpen={isArtifactDialogOpen} onOpenChange={setIsArtifactDialogOpen} purpose="info" variant="fullscreen">
         <Layout header={<DialogHeader title={ARTIFACT_TITLE} subtitle={ARTIFACT_SUBTITLE} hasDivider onOpenChange={setIsArtifactDialogOpen} />} content={<LayoutContent padding={0}><ArtifactBody /></LayoutContent>} />
       </Dialog>
-      <SessionPickerDialog sessions={sessionPicker as unknown as { sessionId: string; title?: string; updatedAt?: number; workspaceRoot?: string }[] | null} onClose={() => setSessionPicker(null)} />
-      <ModelPickerDialog models={modelPicker} onClose={() => setModelPicker(null)} />
-      <UserInputDialog pendingUserInput={pendingUserInput as unknown as Parameters<typeof UserInputDialog>[0]['pendingUserInput']} uiSelections={uiSelections} setUiSelections={setUiSelections} onClose={() => setPendingUserInput(null)} />
-      <ApprovalDialog pendingApproval={pendingApproval as unknown as Parameters<typeof ApprovalDialog>[0]['pendingApproval']} onClose={() => setPendingApproval(null)} />
+      <SessionPickerDialog />
+      <ModelPickerDialog />
+      <UserInputDialog />
+      <ApprovalDialog />
     </VStack>
   );
 };
+
+const App = () => (
+  <DialogProvider>
+    <AppContent />
+  </DialogProvider>
+);
 
 export default App;
 
