@@ -37,7 +37,8 @@ import { DocumentTextIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 
 import { getVsCodeApi } from './vscode';
 import type { ChatMsg, ToolCall, MuseStatus } from './components/types';
-import { MOBILE_MAX_WIDTH, root, chatColumn, chatLayoutStyle, artifactScroll, AI_CHAT_CSS, artifactPanelWidthVar, ARTIFACT_TITLE, ARTIFACT_SUBTITLE } from './components/constants';
+import { root, chatColumn, chatLayoutStyle, artifactScroll, artifactPanelWidthVar, ARTIFACT_TITLE, ARTIFACT_SUBTITLE } from './components/constants';
+import './styles/chat.css';
 import { mathPlugins } from './components/math-plugins';
 import { MuseHeader } from './components/muse-header';
 import { ChatEmptyState } from './components/chat-empty-state';
@@ -212,7 +213,6 @@ const App = () => {
 
   return (
     <VStack ref={rootRef as never} style={root}>
-      <style>{AI_CHAT_CSS}</style>
       <MuseHeader title={conversationTitle} onHistory={handleHistory} onNewConversation={handleNewConversation} />
       <Layout height="fill" content={<LayoutContent padding={0}><HStack height="100%">
         <VStack style={chatColumn}>
